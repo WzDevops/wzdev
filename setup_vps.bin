@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Auto install XFCE + TigerVNC + auto setup for VPS
+
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+apt update -y && apt upgrade -y
+apt install -y xfce4 xfce4-goodies tigervnc-standalone-server dbus-x11 xauth expect
+
+# setup vnc password
+PASSWORD="vnc123"
+mkdir -p ~/.vnc
+echo $PASSWORD | vncpasswd -f > ~/.vnc/passwd
+chmod 600 ~/.vnc/passwd
+
+# xstartup
+cat > ~/.vnc/xstartup <<'EOF'
+#!/bin/sh
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+xrdb $HOME/.Xresources
+startxfce4 &
+EOF
+chmod +x ~/.vnc/xstartup
+
+# systemd service
+cat > /etc/systemd/system/vncserver@.service <<EOF
+[Unit]
+Description=VNC Server for %i
+After=network.target
+
+[Service]
+Type=forking
+User=%i
+PAMName=login
+PIDFile=/home/%i/.vnc/%H:1.pid
+ExecStart=/usr/bin/vncserver :1 -geometry 1280x800 -depth 24
+ExecStop=/usr/bin/vncserver -kill :1
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now vncserver@$(whoami).service
+
+echo "VNC setup done. Connect to <IP>:5901 with password 'vnc123'"
